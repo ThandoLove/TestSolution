@@ -1,0 +1,121 @@
+﻿
+@using OutlookBlazorTestApp2.Data.Models;
+@inject HttpClient Http
+@inject IJSRuntime JSRuntime
+
+<div class="auto-link-container">
+    <div class="auto-link-header">
+        <h3>Auto-Link Email</h3>
+        <button class="btn btn-primary" @onclick="AutoLinkEmail">Auto-Link</button>
+    </div>
+
+    @if (IsLoading)
+    {
+        <div class="loading-indicator">
+            <div class="spinner"></div>
+            <p>Searching for matching records...</p>
+        </div>
+    }
+    else if (MatchFound == true && MatchedRecord != null)
+
+    {
+        <div class="match-found">
+            <h4>Match Found!</h4>
+            <div class="record-card">
+                <h5>@MatchedRecord.Name</h5>
+                <p>@MatchedRecord.Summary</p>
+                <button class="btn btn-success" @onclick="LinkToRecord">Link to this Record</button>
+            </div>
+        </div>
+    }
+    else if (MatchFound == false)
+    {
+        <div class="no-match">
+            <h4>No Match Found</h4>
+            <p>We couldn't find any existing records that match this email.</p>
+            <button class="btn btn-primary" @onclick="CreateNewRecord">Create New Record</button>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="error-message">
+            <p>@ErrorMessage</p>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback<CrmRecord> OnRecordLinked { get; set; }
+    [Parameter] public EventCallback OnCreateNewRecord { get; set; }
+
+    private bool IsLoading { get; set; } = false;
+    private bool? MatchFound { get; set; } = null;
+    private CrmRecord? MatchedRecord { get; set; }
+    private string ErrorMessage { get; set; } = "";
+
+    private async Task AutoLinkEmail()
+    {
+        IsLoading = true;
+        MatchFound = null;
+        MatchedRecord = null;
+        ErrorMessage = "";
+
+        try
+        {
+            // Get email context
+            var contextResponse = await Http.GetFromJsonAsync<ApiResponse<EmailContext>>("/api/outlook/context");
+
+            if (contextResponse?.Data != null)
+            {
+                var emailContext = contextResponse.Data;
+
+                // Create auto-link request
+                var request = new AutoLinkRequest
+                {
+                    Sender = emailContext.Sender?.Address ?? "",
+                    Content = emailContext.Subject + " " + emailContext.Body
+                };
+
+                // Call auto-link API
+                var response = await Http.PostAsJsonAsync("/api/outlook/auto-link", request);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<AutoLinkResponse>>();
+
+                    if (apiResponse?.Data != null)
+                    {
+                        MatchFound = apiResponse.Data.MatchFound;
+                        MatchedRecord = apiResponse.Data.Record;
+                    }
+                }
+                else
+                {
+                    ErrorMessage = "Failed to auto-link email";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error auto-linking email: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task LinkToRecord()
+    {
+        if (MatchedRecord != null)
+        {
+            await OnRecordLinked.InvokeAsync(MatchedRecord);
+        }
+    }
+
+    private async Task CreateNewRecord()
+    {
+        await OnCreateNewRecord.InvokeAsync();
+    }
+}

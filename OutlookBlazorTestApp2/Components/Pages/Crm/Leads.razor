@@ -1,0 +1,122 @@
+﻿
+@page "/leads"
+@inject HttpClient Http
+@inject IJSRuntime JSRuntime
+
+<div class="ms-Fabric">
+    <div class="ms-Grid" dir="ltr" style="padding:12px;">
+        <h2 class="ms-fontSize-24 ms-fontWeight-semibold">Outlook — Create Lead (Sage X3)</h2>
+        <p class="ms-fontSize-14">Reads selected message and creates a lead in Sage X3.</p>
+
+        <div style="margin-top:12px;">
+            <label class="ms-Label">Name</label>
+            <input @bind="Name" class="ms-TextField-field" />
+        </div>
+        <div style="margin-top:8px;">
+            <label class="ms-Label">Email</label>
+            <input @bind="Email" class="ms-TextField-field" />
+        </div>
+        <div style="margin-top:8px;">
+            <label class="ms-Label">Subject</label>
+            <input @bind="Subject" class="ms-TextField-field" />
+        </div>
+        <div style="margin-top:8px;">
+            <label class="ms-Label">Body (preview)</label>
+            <textarea @bind="Body" class="ms-TextField-field" rows="6"></textarea>
+        </div>
+
+        <div style="margin-top:12px;">
+            <button class="ms-Button ms-Button--primary" @onclick="LoadFromOutlook">Auto-fill from Outlook</button>
+            <button class="ms-Button" style="margin-left:10px" @onclick="CreateLead">Create Lead in Sage X3</button>
+            <span style="margin-left:12px">@StatusMessage</span>
+        </div>
+    </div>
+</div>
+
+@code {
+    string Name { get; set; } = "";
+    string Email { get; set; } = "";
+    string Subject { get; set; } = "";
+    string Body { get; set; } = "";
+    string StatusMessage { get; set; } = "Idle";
+
+    async Task LoadFromOutlook()
+    {
+        StatusMessage = "Reading from Outlook...";
+        try
+        {
+            var details = await JSRuntime.InvokeAsync<object>("officeInterop.getMessageDetails");
+            if (details is null)
+            {
+                StatusMessage = "No details returned";
+                return;
+            }
+            var json = System.Text.Json.JsonSerializer.Serialize(details);
+            var doc = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(json);
+            if (doc.TryGetProperty("error", out var err))
+            {
+                StatusMessage = "Office error: " + err.GetString();
+                return;
+            }
+            if (doc.TryGetProperty("from", out var f)) Email = ExtractEmail(f.GetString());
+            if (doc.TryGetProperty("subject", out var s)) Subject = s.GetString() ?? "";
+            if (doc.TryGetProperty("body", out var b)) Body = b.GetString() ?? "";
+            if (!string.IsNullOrWhiteSpace(Email) && string.IsNullOrWhiteSpace(Name))
+            {
+                Name = ExtractNameFromFromField(doc);
+            }
+            StatusMessage = "Loaded from Outlook";
+        }
+        catch (System.Exception ex)
+        {
+            StatusMessage = "Error: " + ex.Message;
+        }
+    }
+
+    string ExtractEmail(string fromField)
+    {
+        if (string.IsNullOrWhiteSpace(fromField)) return "";
+        var idx1 = fromField.IndexOf("<");
+        var idx2 = fromField.IndexOf(">");
+        if (idx1 >= 0 && idx2 > idx1) return fromField.Substring(idx1 + 1, idx2 - idx1 - 1);
+        return fromField;
+    }
+
+    string ExtractNameFromFromField(System.Text.Json.JsonElement doc)
+    {
+        try
+        {
+            if (doc.TryGetProperty("from", out var f))
+            {
+                var s = f.GetString() ?? "";
+                var idx = s.IndexOf("<");
+                if (idx > 0) return s.Substring(0, idx).Trim();
+            }
+        }
+        catch { }
+        return "";
+    }
+
+    async Task CreateLead()
+    {
+        StatusMessage = "Creating lead...";
+        var payload = new { Name, Email, Subject };
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("/api/SageX3/create-lead", payload);
+            if (resp.IsSuccessStatusCode)
+            {
+                StatusMessage = "Lead created successfully";
+            }
+            else
+            {
+                var txt = await resp.Content.ReadAsStringAsync();
+                StatusMessage = "Error: " + resp.StatusCode + " " + txt;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            StatusMessage = "Exception: " + ex.Message;
+        }
+    }
+}

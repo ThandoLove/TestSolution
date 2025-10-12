@@ -1,0 +1,58 @@
+﻿
+@page "/settings"
+@using OutlookBlazorTestApp2.services
+@inject CacheService CacheService
+
+<h3>⚙️ Settings</h3>
+
+<EditForm Model="@settings" OnValidSubmit="@SaveSettings">
+    <div class="mb-2">
+        <label>CRM API URL:</label>
+        <InputText @bind-Value="settings.ApiUrl" class="form-control" />
+    </div>
+    <div class="mb-2">
+        <label>Theme:</label>
+        <InputSelect @bind-Value="settings.Theme" class="form-select">
+            <option>Light</option>
+            <option>Dark</option>
+        </InputSelect>
+    </div>
+    <div class="mb-2 form-check">
+        <InputCheckbox @bind-Value="settings.NotificationsEnabled" class="form-check-input" />
+        <label class="form-check-label">Enable Notifications</label>
+    </div>
+    <button class="btn btn-primary" type="submit">Save</button>
+</EditForm>
+
+@if (saved)
+{
+    <div class="alert alert-success mt-2">Settings saved successfully!</div>
+}
+
+@code {
+    private UserSettings settings = new();
+    private bool saved = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Load previously saved settings from CacheService
+        var cached = await CacheService.GetAsync<UserSettings>("UserSettings");
+        if (cached != null)
+        {
+            settings = cached;
+        }
+    }
+
+    private async Task SaveSettings()
+    {
+        await CacheService.SetAsync("UserSettings", settings);
+        saved = true;
+    }
+
+    public class UserSettings
+    {
+        public string ApiUrl { get; set; } = "";
+        public string Theme { get; set; } = "Light";
+        public bool NotificationsEnabled { get; set; } = true;
+    }
+}

@@ -1,0 +1,245 @@
+﻿<h3>CreateModal</h3>
+
+@code {
+
+}
+@using OutlookTestBlazor.Models
+@inject HttpClient Http
+@inject IJSRuntime JSRuntime
+
+<div class="modal @(IsOpen ? "show" : "")" style="display:@(IsOpen ? "block" : "none")">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5>Create @EntityType</h5>
+                <button type="button" class="btn-close" @onclick="Close"></button>
+            </div>
+            <div class="modal-body">
+                @if (IsLoading)
+                {
+                    <div class="loading-indicator">
+                        <div class="spinner"></div>
+                        <p>Creating @EntityType.ToLower()...</p>
+                    </div>
+                }
+                else
+                {
+                    <form @onsubmit="HandleSubmit">
+                        <div class="mb-3">
+                            <label for="firstName" class="form-label">First Name</label>
+                            <input type="text" class="form-control" id="firstName" @bind="FirstName" required />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="lastName" class="form-label">Last Name</label>
+                            <input type="text" class="form-control" id="lastName" @bind="LastName" required />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="email" @bind="Email" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="phone" class="form-label">Phone</label>
+                            <input type="tel" class="form-control" id="phone" @bind="Phone" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="company" class="form-label">Company</label>
+                            <input type="text" class="form-control" id="company" @bind="Company" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="title" class="form-label">Title</label>
+                            <input type="text" class="form-control" id="title" @bind="Title" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="notes" class="form-label">Notes</label>
+                            <textarea class="form-control" id="notes" @bind="Notes" rows="3"></textarea>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(ErrorMessage))
+                        {
+                            <div class="alert alert-danger">
+                                @ErrorMessage
+                            </div>
+                        }
+
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @onclick="Close">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Create @EntityType</button>
+                        </div>
+                    </form>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string EntityType { get; set; } = "Contact"; // "Contact", "Lead", "Opportunity"
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<CrmRecord> OnRecordCreated { get; set; }
+
+    private string FirstName { get; set; } = "";
+    private string LastName { get; set; } = "";
+    private string Email { get; set; } = "";
+    private string Phone { get; set; } = "";
+    private string Company { get; set; } = "";
+    private string Title { get; set; } = "";
+    private string Notes { get; set; } = "";
+
+    private bool IsLoading { get; set; } = false;
+    private string ErrorMessage { get; set; } = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await PrepopulateFromEmailContext();
+    }
+
+    private async Task PrepopulateFromEmailContext()
+    {
+        try
+        {
+            // Try to get email context to prepopulate fields
+            var response = await Http.GetFromJsonAsync<ApiResponse<EmailContext>>("/api/outlook/context");
+
+            if (response?.Data != null)
+            {
+                var emailContext = response.Data;
+
+                // Prepopulate from sender information
+                if (emailContext.Sender != null)
+                {
+                    Email = emailContext.Sender.Address;
+
+                    // Try to extract name from sender
+                    var nameParts = emailContext.Sender.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    if (nameParts.Length > 0)
+                    {
+                        FirstName = nameParts[0];
+                        if (nameParts.Length > 1)
+                        {
+                            LastName = string.Join(" ", nameParts.Skip(1));
+                        }
+                    }
+                }
+
+                // Prepopulate subject as company name if it looks like a company
+                if (!string.IsNullOrWhiteSpace(emailContext.Subject))
+                {
+                    // Simple heuristic: if subject contains common company words, use it
+                    var subject = emailContext.Subject.ToLower();
+                    if (subject.Contains("company") || subject.Contains("corp") || subject.Contains("inc") ||
+                        subject.Contains("ltd") || subject.Contains("llc"))
+                    {
+                        Company = emailContext.Subject;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Silently fail - we don't want to block the user if we can't prepopulate
+            Console.WriteLine($"Error prepopulating from email context: {ex.Message}");
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        IsLoading = true;
+        ErrorMessage = "";
+
+        try
+        {
+            if (EntityType == "Contact")
+            {
+                var request = new CreateContactRequest
+                {
+                    FirstName = FirstName,
+                    LastName = LastName,
+                    Email = Email,
+                    Phone = Phone,
+                    Company = Company,
+                    Title = Title,
+                    PrimaryAddress = new Address()
+                };
+
+                var response = await Http.PostAsJsonAsync("/api/crm/create-contact", request);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<CrmRecord>>();
+                    if (apiResponse?.Data != null)
+                    {
+                        await OnRecordCreated.InvokeAsync(apiResponse.Data);
+                        await Close();
+                    }
+                }
+                else
+                {
+                    ErrorMessage = "Failed to create contact";
+                }
+            }
+            else if (EntityType == "Lead")
+            {
+                var request = new CreateLeadRequest
+                {
+                    FirstName = FirstName,
+                    LastName = LastName,
+                    Email = Email,
+                    Phone = Phone,
+                    Company = Company,
+                    Title = Title,
+                    Description = Notes,
+                    EstimatedValue = 0,
+                    Currency = "USD",
+                    ExpectedCloseDate = DateTime.Today.AddDays(30),
+                    Source = LeadSource.Email
+                };
+
+                var response = await Http.PostAsJsonAsync("/api/crm/create-lead", request);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<CrmRecord>>();
+                    if (apiResponse?.Data != null)
+                    {
+                        await OnRecordCreated.InvokeAsync(apiResponse.Data);
+                        await Close();
+                    }
+                }
+                else
+                {
+                    ErrorMessage = "Failed to create lead";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error creating {EntityType.ToLower()}: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task Close()
+    {
+        // Reset form fields
+        FirstName = "";
+        LastName = "";
+        Email = "";
+        Phone = "";
+        Company = "";
+        Title = "";
+        Notes = "";
+        ErrorMessage = "";
+
+        await OnClose.InvokeAsync();
+    }
+}

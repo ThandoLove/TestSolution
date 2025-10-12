@@ -1,0 +1,139 @@
+﻿@page "/"
+
+<PageTitle>Home</PageTitle>
+
+<h1>Hello, world!</h1>
+
+Welcome to your new app.
+
+
+
+
+
+@page "/home"
+@using OutlookTestBlazor.Components.Pages.Shared
+@using OutlookTestBlazor.Models
+@inject RoleService RoleService
+@inject IJSRuntime JSRuntime
+
+@using static OutlookTestBlazor.Components.Pages.Shared.NavDropdown
+
+<div class="task-pane-header">
+    <img src="/images/logo.png" alt="Sage X3 Logo" />
+</div>
+
+<div class="row mb-3">
+    <NavDropdown Title="Contact"
+                 Items="@(new List<string> { "Add Contact", "View Contact" })"
+                 OnSelect="HandleDropdownSelect" />
+
+    <NavDropdown Title="Lead"
+                 Items="@(new List<string> { "Add Lead", "View Lead" })"
+                 OnSelect="HandleDropdownSelect" />
+
+    <NavDropdown Title="Opportunity"
+                 Items="@(new List<string> { "Add Opportunity", "View Opportunity" })"
+                 OnSelect="HandleDropdownSelect" />
+
+    <NavDropdown Title="Task"
+                 Items="@(new List<string> { "Add Task", "View Task" })"
+                 OnSelect="HandleDropdownSelect" />
+
+    @if (IsManager)
+    {
+        <NavDropdown Title="Admin Tools"
+                     Items="@(new List<string> { "Edit Contact", "Edit Lead", "Edit Opportunity", "Assign Task" })"
+                     OnSelect="HandleDropdownSelect" />
+    }
+</div>
+
+<div class="row mb-3">
+    <div class="col-12">
+        <AutoLink OnRecordLinked="HandleRecordLinked" OnCreateNewRecord="HandleCreateNewRecord" />
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-12">
+        <EmailContext OnEmailContextLoaded="HandleEmailContextLoaded" />
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-12">
+        <EntityList Title="Recent Contacts" EntityType="EntityType.Contact"
+                    OnEntitySelected="HandleEntitySelected" OnEntityEdited="HandleEntityEdited" />
+    </div>
+</div>
+
+<CreateRecordModal EntityType="@ModalEntityType" IsOpen="@ShowCreateModal"
+                   OnClose="CloseModal" OnRecordCreated="HandleRecordCreated" />
+
+@code {
+    private bool IsManager = false;
+    private bool ShowCreateModal = false;
+    private string ModalEntityType = "";
+
+    protected override void OnInitialized()
+    {
+        IsManager = RoleService.IsManager();
+    }
+
+    private void HandleDropdownSelect(string selectedItem)
+    {
+        if (selectedItem.StartsWith("Add"))
+        {
+            ModalEntityType = selectedItem.Replace("Add ", "");
+            ShowCreateModal = true;
+        }
+        else if (selectedItem.StartsWith("Edit") || selectedItem == "Assign Tasks")
+        {
+            // TODO: Handle other admin actions
+        }
+        else if (selectedItem.StartsWith("View"))
+        {
+            // TODO: Navigate to or show view list
+        }
+    }
+
+    private void CloseModal()
+    {
+        ShowCreateModal = false;
+    }
+    
+    private async Task HandleRecordLinked(CrmRecord record)
+    {
+        // Handle when a record is linked
+        await JSRuntime.InvokeVoidAsync("alert", $"Record {record.Name} linked successfully!");
+    }
+    
+    private async Task HandleCreateNewRecord()
+    {
+        ModalEntityType = "Contact";
+        ShowCreateModal = true;
+    }
+    
+    private async Task HandleEmailContextLoaded(EmailContext context)
+    {
+        // Handle when email context is loaded
+        Console.WriteLine($"Email context loaded: {context.Subject}");
+    }
+    
+    private async Task HandleEntitySelected(CrmRecord entity)
+    {
+        // Handle when an entity is selected
+        await JSRuntime.InvokeVoidAsync("alert", $"Entity {entity.Name} selected!");
+    }
+    
+    private async Task HandleEntityEdited(CrmRecord entity)
+    {
+        // Handle when an entity is edited
+        await JSRuntime.InvokeVoidAsync("alert", $"Entity {entity.Name} edit requested!");
+    }
+    
+    private async Task HandleRecordCreated(CrmRecord record)
+    {
+        // Handle when a record is created
+        await JSRuntime.InvokeVoidAsync("alert", $"Record {record.Name} created successfully!");
+    }
+}*/

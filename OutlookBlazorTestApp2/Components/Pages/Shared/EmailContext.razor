@@ -1,0 +1,188 @@
+﻿
+@using OutlookBlazorTestApp2.Data.Models;
+@inject IJSRuntime JSRuntime
+@inject HttpClient Http
+
+<div class="email-context-container">
+    @if (IsLoading)
+    {
+        <div class="loading-indicator">
+            <div class="spinner"></div>
+            <p>Loading email context...</p>
+        </div>
+    }
+    else if (EmailContext != null)
+    {
+        <div class="email-context-card">
+            <div class="email-header">
+                <h3>@EmailContext.Subject</h3>
+                <div class="email-meta">
+                    <span class="sender">@EmailContext.Sender.Name &lt;@EmailContext.Sender.Address&gt;</span>
+                    <span class="date">@EmailContext.ReceivedTime.ToString("MMM dd, yyyy HH:mm")</span>
+                </div>
+
+            </div>
+
+            <div class="email-recipients">
+                @if (EmailContext.ToRecipients.Any())
+                {
+                    <div class="recipient-group">
+                        <span class="label">To:</span>
+                        @foreach (var recipient in EmailContext.ToRecipients)
+                        {
+                            <span class="recipient">@recipient.Name (@recipient.Address)</span>
+                        }
+                    </div>
+                }
+
+                @if (EmailContext.CcRecipients.Any())
+                {
+                    <div class="recipient-group">
+                        <span class="label">Cc:</span>
+                        @foreach (var recipient in EmailContext.CcRecipients)
+                        {
+                            <span class="recipient">@recipient.Name (@recipient.Address)</span>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="email-actions">
+                <button class="btn btn-primary" @onclick="LoadEmailBody">Load Email Body</button>
+                <button class="btn btn-secondary" @onclick="GetSelectedText">Get Selected Text</button>
+                @if (EmailContext.Attachments.Any())
+                {
+                    <button class="btn btn-info" @onclick="ProcessAttachments">Process Attachments (@EmailContext.Attachments.Count)</button>
+                }
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(EmailBody))
+            {
+                <div class="email-body">
+                    <h4>Email Body</h4>
+                    <div class="body-content">@EmailBody</div>
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(SelectedText))
+            {
+                <div class="selected-text">
+                    <h4>Selected Text</h4>
+                    <div class="text-content">@SelectedText</div>
+                </div>
+            }
+
+            @if (AttachmentsProcessed)
+            {
+                <div class="attachments-processed">
+                    <h4>Attachments Processed</h4>
+                    <p>Successfully processed @EmailContext.Attachments.Count attachments.</p>
+                </div>
+            }
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="error-message">
+            <p>@ErrorMessage</p>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback<EmailContext> OnEmailContextLoaded { get; set; }
+
+    private EmailContext? EmailContext { get; set; }
+    private bool IsLoading { get; set; } = false;
+    private string ErrorMessage { get; set; } = "";
+    private string EmailBody { get; set; } = "";
+    private string SelectedText { get; set; } = "";
+    private bool AttachmentsProcessed { get; set; } = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEmailContext();
+    }
+
+    private async Task LoadEmailContext()
+    {
+        IsLoading = true;
+        ErrorMessage = "";
+
+        try
+        {
+            // Get email context from our new Outlook service
+            var response = await Http.GetFromJsonAsync<ApiResponse<EmailContext>>("/api/outlook/context");
+
+            if (response?.Data != null)
+            {
+                EmailContext = response.Data;
+                await OnEmailContextLoaded.InvokeAsync(EmailContext);
+            }
+            else
+            {
+                ErrorMessage = "Failed to load email context";
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error loading email context: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task LoadEmailBody()
+    {
+        if (EmailContext == null) return;
+
+        try
+        {
+            var response = await Http.GetFromJsonAsync<ApiResponse<string>>("/api/outlook/body?format=text");
+
+            if (response?.Data != null)
+            {
+                EmailBody = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error loading email body: {ex.Message}";
+        }
+    }
+
+    private async Task GetSelectedText()
+    {
+        try
+        {
+            var response = await Http.GetFromJsonAsync<ApiResponse<string>>("/api/outlook/selected-text");
+
+            if (response?.Data != null)
+            {
+                SelectedText = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error getting selected text: {ex.Message}";
+        }
+    }
+
+    private async Task ProcessAttachments()
+    {
+        if (EmailContext?.Attachments == null || !EmailContext.Attachments.Any()) return;
+
+        try
+        {
+            // In a real implementation, you would process the attachments
+            // For now, we'll just set the flag to indicate they've been processed
+            AttachmentsProcessed = true;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error processing attachments: {ex.Message}";
+        }
+    }
+}

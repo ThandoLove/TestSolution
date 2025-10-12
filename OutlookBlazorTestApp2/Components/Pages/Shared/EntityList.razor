@@ -1,0 +1,174 @@
+﻿
+
+@using OutlookBlazorTestApp2.Data.Models;
+@inject HttpClient Http
+
+<div class="entity-list-container">
+    <div class="list-header">
+        <h3>@Title</h3>
+        <div class="search-controls">
+            <input @bind="SearchTerm" placeholder="Search..." class="search-input" />
+            <button class="btn btn-primary" @onclick="Search">Search</button>
+        </div>
+    </div>
+
+    @if (IsLoading)
+    {
+        <div class="loading-indicator">
+            <div class="spinner"></div>
+            <p>Loading @Title.ToLower()...</p>
+        </div>
+    }
+    else if (Entities.Any())
+    {
+        <div class="entity-grid">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Company</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var entity in Entities)
+                    {
+                        <tr>
+                            <td>@entity.Name</td>
+                            <td>@entity.Summary</td>
+                            <td>@GetEntityCompany(entity)</td>
+                            <td>
+                                <button class="btn btn-sm btn-info" @onclick="() => ViewEntity(entity)">View</button>
+                                <button class="btn btn-sm btn-warning" @onclick="() => EditEntity(entity)">Edit</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination-controls">
+            <button class="btn btn-secondary" @onclick="PreviousPage" disabled="@IsFirstPage">Previous</button>
+            <span>Page @CurrentPage of @TotalPages</span>
+            <button class="btn btn-secondary" @onclick="NextPage" disabled="@IsLastPage">Next</button>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="error-message">
+            <p>@ErrorMessage</p>
+        </div>
+    }
+    else
+    {
+        <div class="no-results">
+            <p>No @Title.ToLower() found.</p>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "Entities";
+    [Parameter] public EntityType EntityType { get; set; }
+    [Parameter] public EventCallback<CrmRecord> OnEntitySelected { get; set; }
+    [Parameter] public EventCallback<CrmRecord> OnEntityEdited { get; set; }
+
+    private List<CrmRecord> Entities { get; set; } = new();
+    private bool IsLoading { get; set; } = false;
+    private string ErrorMessage { get; set; } = "";
+    private string SearchTerm { get; set; } = "";
+    private int CurrentPage { get; set; } = 1;
+    private int TotalPages { get; set; } = 1;
+    private int PageSize { get; set; } = 10;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEntities();
+    }
+
+    private async Task LoadEntities()
+    {
+        IsLoading = true;
+        ErrorMessage = "";
+
+        try
+        {
+            var request = new SearchRequest
+            {
+                Query = SearchTerm,
+                EntityTypes = new List<EntityType> { EntityType },
+                PageNumber = CurrentPage,
+                PageSize = PageSize
+            };
+
+            var response = await Http.PostAsJsonAsync("/api/crm/search", request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var searchResponse = await response.Content.ReadFromJsonAsync<ApiResponse<SearchResponse<CrmRecord>>>();
+
+                if (searchResponse?.Data != null)
+                {
+                    Entities = searchResponse.Data.Results;
+                    TotalPages = (int)Math.Ceiling((double)searchResponse.Data.TotalCount / PageSize);
+                }
+            }
+            else
+            {
+                ErrorMessage = "Failed to load entities";
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error loading entities: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task Search()
+    {
+        CurrentPage = 1;
+        await LoadEntities();
+    }
+
+    private async Task PreviousPage()
+    {
+        if (CurrentPage > 1)
+        {
+            CurrentPage--;
+            await LoadEntities();
+        }
+    }
+
+    private async Task NextPage()
+    {
+        if (CurrentPage < TotalPages)
+        {
+            CurrentPage++;
+            await LoadEntities();
+        }
+    }
+
+    private async Task ViewEntity(CrmRecord entity)
+    {
+        await OnEntitySelected.InvokeAsync(entity);
+    }
+
+    private async Task EditEntity(CrmRecord entity)
+    {
+        await OnEntityEdited.InvokeAsync(entity);
+    }
+
+    private string GetEntityCompany(CrmRecord entity)
+    {
+        // In a real implementation, you would extract company information from the entity
+        return "Company Name";
+    }
+
+    private bool IsFirstPage => CurrentPage == 1;
+    private bool IsLastPage => CurrentPage == TotalPages;
+}

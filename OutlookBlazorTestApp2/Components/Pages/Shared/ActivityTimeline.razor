@@ -1,0 +1,124 @@
+﻿@using OutlookBlazorTestApp2.Data.Models;
+@inject HttpClient Http
+
+<div class="activity-timeline-container">
+    <div class="timeline-header">
+        <h3>Activity Timeline</h3>
+        <button class="btn btn-primary" @onclick="LoadTimeline">Refresh</button>
+    </div>
+
+    @if (IsLoading)
+    {
+        <div class="loading-indicator">
+            <div class="spinner"></div>
+            <p>Loading activity timeline...</p>
+        </div>
+    }
+    else if (Activities.Any())
+    {
+        <div class="timeline">
+            @foreach (var activity in Activities)
+            {
+                <div class="timeline-item">
+                    <div class="timeline-icon @GetActivityTypeClass(activity.Type)">
+                        <i class="@GetActivityIcon(activity.Type)"></i>
+                    </div>
+                    <div class="timeline-content">
+                        <div class="activity-header">
+                            <h4>@activity.Subject</h4>
+                            <span class="activity-date">@activity.StartDate?.ToString("MMM dd, yyyy HH:mm") ?? ""</span>
+                        </div>
+                        <div class="activity-meta">
+                            <span class="activity-type">@activity.Type</span>
+                            <span class="activity-status">@activity.Status</span>
+                            <span class="activity-priority">@activity.Priority</span>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(activity.Description))
+                        {
+                            <div class="activity-description">
+                                @activity.Description
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="error-message">
+            <p>@ErrorMessage</p>
+        </div>
+    }
+    else
+    {
+        <div class="no-activities">
+            <p>No activities found.</p>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string EntityId { get; set; } = "";
+
+    private List<Activity> Activities { get; set; } = new();
+    private bool IsLoading { get; set; } = false;
+    private string ErrorMessage { get; set; } = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(EntityId))
+        {
+            await LoadTimeline();
+        }
+    }
+
+    public async Task LoadTimeline()
+    {
+        if (string.IsNullOrWhiteSpace(EntityId)) return;
+
+        IsLoading = true;
+        ErrorMessage = "";
+
+        try
+        {
+            var response = await Http.GetFromJsonAsync<ApiResponse<List<Activity>>>($"/api/crm/activity-timeline/{EntityId}");
+
+            if (response?.Data != null)
+            {
+                Activities = response.Data;
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error loading activity timeline: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private string GetActivityTypeClass(ActivityType type) => type switch
+    {
+        ActivityType.Email => "email",
+        ActivityType.Call => "call",
+        ActivityType.Meeting => "meeting",
+        ActivityType.Task => "task",
+        ActivityType.Note => "note",
+        _ => "default"
+    };
+
+    private string GetActivityIcon(ActivityType type)
+    {
+        return type switch
+        {
+            ActivityType.Email => "fas fa-envelope",
+            ActivityType.Call => "fas fa-phone",
+            ActivityType.Meeting => "fas fa-calendar",
+            ActivityType.Task => "fas fa-tasks",
+            ActivityType.Note => "fas fa-sticky-note",
+            _ => "fas fa-info-circle"
+        };
+    }
+}

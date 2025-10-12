@@ -1,0 +1,48 @@
+﻿
+@page "/attachments"
+@using OutlookBlazorTestApp2.Services
+@using OutlookBlazorTestApp2.services
+@inject OutlookService OutlookService
+@inject SageX3Service SageService
+@inject IJSRuntime JS
+
+<h3>Attach a Document</h3>
+
+<p>Select a document source:</p>
+
+<button class="btn btn-primary" @onclick="AttachFromComputer">From Computer</button>
+<button class="btn btn-secondary" @onclick="AttachFromSageX3">From Sage X3</button>
+
+@if (!string.IsNullOrEmpty(statusMessage))
+{
+    <p>@statusMessage</p>
+}
+
+@code {
+    private string? statusMessage;
+
+    private async Task AttachFromComputer()
+    {
+        statusMessage = "Selecting file from computer...";
+        var file = await JS.InvokeAsync<object>("pickLocalFile");
+        var dict = (IDictionary<string, object>)file;
+        string name = dict["name"].ToString();
+        string base64 = dict["content"].ToString();
+
+        await JS.InvokeVoidAsync("attachFileToEmail", name, base64);
+        statusMessage = $"Attached '{name}' from computer.";
+    }
+
+    private async Task AttachFromSageX3()
+    {
+        statusMessage = "Fetching file from Sage X3...";
+        var documentId = "DOC001"; // you can make this dynamic later
+        var document = await SageService.GetDocumentAsync(documentId);
+
+        string base64 = Convert.ToBase64String(document.Content);
+        await JS.InvokeVoidAsync("attachFileToEmail", document.FileName, base64);
+
+        statusMessage = $"Attached '{document.FileName}' from Sage X3.";
+    }
+}
+

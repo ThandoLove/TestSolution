@@ -1,0 +1,120 @@
+﻿
+@page "/login"
+@using Microsoft.AspNetCore.Components.Authorization
+@using OutlookBlazorTestApp2.Data.Models.Auth
+@using OutlookBlazorTestApp2.Services
+@inject IAuthService AuthService
+@inject NavigationManager Nav
+@inject IConfiguration Config
+@inject AuthenticationStateProvider AuthStateProvider
+
+<h3>🔐 Login</h3>
+
+@if (_AuthState?.IsAuthenticated == true)
+{
+    <p>You are already logged in as @_AuthState.UserName</p>
+    <button @onclick="Logout">Logout</button>
+}
+else
+{
+    <button @onclick="LoginWithMicrosoft">Login with Microsoft</button>
+
+    <p>or</p>
+
+    <EditForm Model="manualLogin" OnValidSubmit="ManualLogin">
+        <InputText @bind-Value="manualLogin.Username" placeholder="Username" />
+        <InputText @bind-Value="manualLogin.Password" placeholder="Password" type="password" />
+        <button type="submit">Login</button>
+    </EditForm>
+}
+
+
+@code {
+    private AuthState _AuthState; // stores the current authentication state
+
+    public Login(AuthState authState)
+    {
+        _AuthState = authState;
+    }
+
+    private UserLoginModel manualLogin = new UserLoginModel();
+
+
+    private async Task LoginWithMicrosoft()
+    {
+        try
+        {
+            // Call the AuthService to handle SSO login
+            var result = await AuthService.SignInAsync();
+
+            if (result.Success)
+            {
+                // Redirect to dashboard if login succeeds
+                Nav.NavigateTo("/dashboard");
+            }
+            else
+            {
+                // Show error (replace this with your UI error handling)
+                Console.WriteLine("Login failed: " + result.ErrorMessage);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Error during Microsoft login: " + ex.Message);
+        }
+    }
+
+    private async Task ManualLogin()
+    {
+        try
+        {
+            // Example: for manual login, you might call SignInAsync with credentials
+            var result = await AuthService.SignInAsync(); // Replace with actual credential logic
+
+            if (result.Success)
+            {
+                Nav.NavigateTo("/dashboard");
+            }
+            else
+            {
+                Console.WriteLine("Manual login failed: " + result.ErrorMessage);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Error during manual login: " + ex.Message);
+        }
+    }
+
+    private async Task Logout()
+    {
+        try
+        {
+            // Clear session and sign out
+            await AuthService.SignOutAsync();
+
+            // Navigate back to login page
+            Nav.NavigateTo("/login");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Error during logout: " + ex.Message);
+        }
+    }
+
+    public class UserLoginModel
+    {
+        [Parameter] public bool IsOpen { get; set; }
+        [Parameter] public EventCallback OnLoginSuccess { get; set; }
+        public string? Username { get; set; }
+        public string? Password { get; set; }
+     private async Task OnSubmit()
+    {
+        // Replace with your auth logic or connect it to OpenID Connect
+        if (Username == "johndoe" && Password == "password")
+        {
+            await OnLoginSuccess.InvokeAsync();
+        }
+    }
+}
+}
