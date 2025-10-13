@@ -48,7 +48,7 @@ namespace OutlookBlazorTestApp2.Controllers
         public async Task<IActionResult> GetUserProfile()
         {
             var result = await _auth.GetUserProfileAsync();
-            return Ok(new ApiResponse<UserProfile> { Data = result });
+            return Ok(new ApiResponse<Data.Models.UserProfile> { Data = result });
         }
 
         [HttpGet("auth-state")]

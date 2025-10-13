@@ -3,7 +3,7 @@ namespace OutlookBlazorTestApp2.Data.Models
 {
     public class EmailContext
     {
-        private EmailSender? sender;
+
 
         public string ItemId { get; set; } = "";
         public string Subject { get; set; } = "";

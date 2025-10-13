@@ -1,22 +1,12 @@
-﻿@page "/"
-
-<PageTitle>Home</PageTitle>
-
-<h1>Hello, world!</h1>
-
-Welcome to your new app.
-
-
-
-
-
-@page "/home"
-@using OutlookTestBlazor.Components.Pages.Shared
-@using OutlookTestBlazor.Models
+﻿@page "/home"
+@using OutlookBlazorTestApp2.Components.Layout
+@using OutlookBlazorTestApp2.Data.Models;
+@using OutlookBlazorTestApp2.Components.Pages.Crm
+@using OutlookBlazorTestApp2.services;
 @inject RoleService RoleService
 @inject IJSRuntime JSRuntime
 
-@using static OutlookTestBlazor.Components.Pages.Shared.NavDropdown
+@using static OutlookBlazorTestApp2.Components.Layout.NavMenu
 
 <div class="task-pane-header">
     <img src="/images/logo.png" alt="Sage X3 Logo" />

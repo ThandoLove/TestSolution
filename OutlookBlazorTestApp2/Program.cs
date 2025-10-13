@@ -13,6 +13,7 @@ builder.Services.AddRazorComponents()
 
 // ✅ Register CacheService here
 builder.Services.AddSingleton<CacheService>();
+builder.Services.AddScoped<RoleService>(); // 👈 Add this her
 
 // 2️⃣ Add Microsoft Identity Authentication
 builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)

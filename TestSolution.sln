@@ -8,6 +8,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "OutlookAddinManifest", "OutlookAddinManifest", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
 	ProjectSection(SolutionItems) = preProject
 		manifest.xml = manifest.xml
+		OutlookAddinEnhanced.xml = OutlookAddinEnhanced.xml
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "OutlookAddinWeb", "OutlookAddinWeb", "{9D4EA05F-7656-4497-BC4C-45C4FD0A2336}"
