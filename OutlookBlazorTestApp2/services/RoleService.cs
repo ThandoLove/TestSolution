@@ -1,23 +1,23 @@
-﻿namespace OutlookBlazorTestApp2.services
+﻿using OutlookBlazorTestApp2.Services;
+using System.Security.Claims;
+
+namespace OutlookBlazorTestApp2.services
 {
     public class RoleService
     {
-        public string CurrentUserRole { get; set; } = "Employee"; // Default role
+        private readonly AuthStateService _auth;
 
-        public bool IsManager()
+        public RoleService(AuthStateService auth)
         {
-            return CurrentUserRole.Equals("Manager", StringComparison.OrdinalIgnoreCase);
+            _auth = auth;
         }
 
-        public bool IsAdmin()
+        public bool IsInRole(string role)
         {
-            return CurrentUserRole.Equals("Admin", StringComparison.OrdinalIgnoreCase);
+            return _auth.GetRoles().Any(r => string.Equals(r, role, StringComparison.OrdinalIgnoreCase));
         }
 
-        public bool IsEmployee()
-        {
-            return CurrentUserRole.Equals("Employee", StringComparison.OrdinalIgnoreCase);
-        }
+        public bool IsManager() => IsInRole("Manager") || IsInRole("Admin");
+        public bool IsAdmin() => IsInRole("Admin");
     }
 }
-

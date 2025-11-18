@@ -1,47 +1,67 @@
-﻿
-@using OutlookBlazorTestApp2.Data.Models;
+﻿@using OutlookBlazorTestApp2.Data.Models
+@inject EmailContextService EmailService
 @inject HttpClient Http
-@inject IJSRuntime JSRuntime
+@inject IJSRuntime Js
+@inject NavigationManager Nav
 
-<div class="auto-link-container">
-    <div class="auto-link-header">
-        <h3>Auto-Link Email</h3>
-        <button class="btn btn-primary" @onclick="AutoLinkEmail">Auto-Link</button>
-    </div>
+<div class="card p-3">
+    <h5>AutoLink</h5>
 
-    @if (IsLoading)
+    @if (Loading)
     {
-        <div class="loading-indicator">
-            <div class="spinner"></div>
-            <p>Searching for matching records...</p>
-        </div>
+        <div>Loading email context...</div>
     }
-    else if (MatchFound == true && MatchedRecord != null)
-
+    else if (EmailCtx is null)
     {
-        <div class="match-found">
-            <h4>Match Found!</h4>
-            <div class="record-card">
-                <h5>@MatchedRecord.Name</h5>
-                <p>@MatchedRecord.Summary</p>
-                <button class="btn btn-success" @onclick="LinkToRecord">Link to this Record</button>
-            </div>
+        <div class="alert alert-warning">
+            No email context available. Make sure this task pane is opened inside Outlook and Office.js is loaded.
         </div>
+        <button class="btn btn-primary" @onclick="LoadEmail">Try load email</button>
     }
-    else if (MatchFound == false)
+    else
     {
-        <div class="no-match">
-            <h4>No Match Found</h4>
-            <p>We couldn't find any existing records that match this email.</p>
-            <button class="btn btn-primary" @onclick="CreateNewRecord">Create New Record</button>
+        <div>
+            <strong>Subject:</strong> @EmailCtx.Subject <br />
+            <strong>From:</strong> @EmailCtx.FromName (@EmailCtx.From) <br />
         </div>
-    }
 
-    @if (!string.IsNullOrEmpty(ErrorMessage))
-    {
-        <div class="error-message">
-            <p>@ErrorMessage</p>
+        <div class="mt-2">
+            <button class="btn btn-outline-primary me-2" @onclick="FindMatches">Find Matches</button>
+            <button class="btn btn-outline-success" @onclick="CreateNew">Create New Contact</button>
         </div>
+
+        @if (Matching)
+        {
+            <div class="mt-2">Searching for matching records...</div>
+        }
+
+        @if (Matches?.Any() == true)
+        {
+            <h6 class="mt-3">Possible matches</h6>
+            <ul class="list-group">
+                @foreach (var m in Matches)
+                {
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>@m.Name</strong> <small class="text-muted">(@m.EntityType)</small>
+                            <div><small>@m.PrimaryEmail</small></div>
+                        </div>
+                        <div class="text-end">
+                            <div><span class="badge bg-secondary">Score: @Math.Round(m.Score, 2)</span></div>
+                            <div class="mt-1">
+                                <button class="btn btn-sm btn-primary me-1" @onclick="() => LinkMatch(m)">Link</button>
+                                <button class="btn btn-sm btn-link" @onclick="() => OpenRecord(m)">Open</button>
+                            </div>
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+
+        @if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            <div class="alert alert-danger mt-2">@ErrorMessage</div>
+        }
     }
 </div>
 
@@ -49,73 +69,117 @@
     [Parameter] public EventCallback<CrmRecord> OnRecordLinked { get; set; }
     [Parameter] public EventCallback OnCreateNewRecord { get; set; }
 
-    private bool IsLoading { get; set; } = false;
-    private bool? MatchFound { get; set; } = null;
-    private CrmRecord? MatchedRecord { get; set; }
-    private string ErrorMessage { get; set; } = "";
+    private bool Loading = true;
+    private bool Matching = false;
+    private EmailContext? EmailCtx;
+    private List<MatchResult>? Matches;
+    private string ErrorMessage = "";
 
-    private async Task AutoLinkEmail()
+    protected override async Task OnInitializedAsync()
     {
-        IsLoading = true;
-        MatchFound = null;
-        MatchedRecord = null;
+        await LoadEmail();
+    }
+
+    private async Task LoadEmail()
+    {
+        Loading = true;
+        StateHasChanged();
+        try
+        {
+            EmailCtx = await EmailService.GetActiveEmailFromOutlookAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Failed to load email: {ex.Message}";
+        }
+        finally
+        {
+            Loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task FindMatches()
+    {
+        if (EmailCtx == null) return;
+        Matching = true;
+        Matches = null;
         ErrorMessage = "";
+        StateHasChanged();
 
         try
         {
-            // Get email context
-            var contextResponse = await Http.GetFromJsonAsync<ApiResponse<EmailContext>>("/api/outlook/context");
-
-            if (contextResponse?.Data != null)
+            var resp = await Http.PostAsJsonAsync("api/autolink/match", EmailCtx);
+            if (resp.IsSuccessStatusCode)
             {
-                var emailContext = contextResponse.Data;
-
-                // Create auto-link request
-                var request = new AutoLinkRequest
-                {
-                    Sender = emailContext.Sender?.Address ?? "",
-                    Content = emailContext.Subject + " " + emailContext.Body
-                };
-
-                // Call auto-link API
-                var response = await Http.PostAsJsonAsync("/api/outlook/auto-link", request);
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<AutoLinkResponse>>();
-
-                    if (apiResponse?.Data != null)
-                    {
-                        MatchFound = apiResponse.Data.MatchFound;
-                        MatchedRecord = apiResponse.Data.Record;
-                    }
-                }
-                else
-                {
-                    ErrorMessage = "Failed to auto-link email";
-                }
+                Matches = await resp.Content.ReadFromJsonAsync<List<MatchResult>>();
+            }
+            else
+            {
+                var text = await resp.Content.ReadAsStringAsync();
+                ErrorMessage = "Match failed: " + text;
             }
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Error auto-linking email: {ex.Message}";
+            ErrorMessage = "Error finding matches: " + ex.Message;
         }
         finally
         {
-            IsLoading = false;
+            Matching = false;
+            StateHasChanged();
         }
     }
 
-    private async Task LinkToRecord()
+    private async Task LinkMatch(MatchResult match)
     {
-        if (MatchedRecord != null)
+        if (EmailCtx == null || match == null) return;
+
+        var req = new LinkRequest
         {
-            await OnRecordLinked.InvokeAsync(MatchedRecord);
+            EmailContext = EmailCtx,
+            TargetEntityType = match.EntityType,
+            TargetRecordId = match.Id
+        };
+
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("api/autolink/link", req);
+            if (resp.IsSuccessStatusCode)
+            {
+                var result = await resp.Content.ReadFromJsonAsync<LinkResult>();
+                await Js.InvokeVoidAsync("alert", result?.Message ?? "Linked");
+                if (OnRecordLinked.HasDelegate)
+                {
+                    await OnRecordLinked.InvokeAsync(new CrmRecord { Id = match.Id, Name = match.Name });
+                }
+            }
+            else
+            {
+                var text = await resp.Content.ReadAsStringAsync();
+                ErrorMessage = "Link failed: " + text;
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = "Error linking record: " + ex.Message;
         }
     }
 
-    private async Task CreateNewRecord()
+    private void CreateNew()
     {
-        await OnCreateNewRecord.InvokeAsync();
+        if (OnCreateNewRecord.HasDelegate)
+        {
+            OnCreateNewRecord.InvokeAsync();
+        }
+        else
+        {
+            Nav.NavigateTo("/contacts/add");
+        }
+    }
+
+    private void OpenRecord(MatchResult m)
+    {
+        Nav.NavigateTo($"/{m.EntityType.ToLower()}/{m.Id}");
     }
 }

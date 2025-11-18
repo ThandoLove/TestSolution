@@ -1,0 +1,185 @@
+﻿@using System.Collections.Generic
+@using OutlookBlazorTestApp2.Services
+@using OutlookBlazorTestApp2.Components.Pages.Shared
+
+@inject IJSRuntime JS
+@inject EmailAttachmentService AttachmentService
+@inject SageX3Service SageX3
+@inject NavigationManager Nav
+@inject IConfiguration _config
+@inject Toast Toast  
+
+<!-- or use CascadingParameter if that’s how your Toast works -->
+
+@if (Attachments is not null)
+{
+    <h4>Attachments</h4>
+    @foreach (var att in Attachments)
+    {
+        <button class="btn btn-sm btn-outline-primary me-2 mb-2"
+                @onclick="() => Upload(att)"
+                disabled="@att.IsUploading || ActivityCreated">
+            @if (att.IsUploading)
+            {
+                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                Uploading...
+            }
+            else if (ActivityCreated)
+            {
+                <span>✅ Uploaded @att.Name</span>
+            }
+            else
+            {
+                Upload @att.Name
+            }
+        </button>
+    }
+}
+
+@if (!string.IsNullOrEmpty(ErrorMessage))
+{
+    <div class="alert alert-danger" role="alert" aria-live="polite">
+        @ErrorMessage
+    </div>
+}
+
+@if (!ActivityCreated)
+{
+    <button class="btn btn-primary mt-3" @onclick="CreateActivity">
+        Create Activity + Upload All
+    </button>
+}
+else
+{
+    <p class="text-success mt-3">
+        ✅ Activity Created in Sage X3:
+        <a href="@SageLink" target="_blank">Open in Sage X3</a>
+    </p>
+}
+@foreach (var att in Attachments)
+{
+    <span class="me-2">@att.name</span>
+
+    @if (att.Uploaded)
+    {
+        <span class="badge bg-success">Uploaded</span>
+    }
+    else
+    {
+        <button class="btn btn-sm btn-outline-secondary"
+                @onclick="() => Upload(att.id, att.name)">
+            Upload
+        </button>
+    }
+
+    <br />
+}
+
+
+@code {
+    [Parameter] public Guid ActivityId { get; set; }
+
+    private List<AttachmentViewModel> Attachments { get; set; } = new();
+    private string ErrorMessage { get; set; }
+
+    private bool ActivityCreated { get; set; }
+    private string SageLink { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var email = await JS.InvokeAsync<EmailDto>("getEmailContext");
+            Attachments = email.Attachments.Select(a => new AttachmentViewModel
+            {
+                Id = a.Id,
+                Name = a.Name,
+                IsUploading = false
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = "Failed to load email context.";
+            Console.WriteLine(ex.Message);
+        }
+    }
+
+    private async Task Upload(AttachmentViewModel attachment)
+    {
+        if (ActivityCreated) return; // disable manual uploads after full upload
+
+        attachment.IsUploading = true;
+        ErrorMessage = null;
+
+        try
+        {
+            var attContent = await JS.InvokeAsync<AttachmentContent>("downloadAttachment", attachment.Id);
+            await AttachmentService.UploadAttachmentAsync(ActivityId, attachment.Name, attContent.Content);
+
+            Console.WriteLine($"Uploaded {attachment.Name}");
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Failed to upload {attachment.Name}.";
+            Console.WriteLine(ex.Message);
+        }
+        finally
+        {
+            attachment.IsUploading = false;
+        }
+    }
+
+    private async Task CreateActivity()
+    {
+        try
+        {
+            // 1️⃣ Create activity in Sage X3
+            var activityId = await SageX3.CreateActivityAsync(ActivityId);
+
+            ActivityCreated = true;
+            SageLink = $"{_config["SageX3:BaseUrl"]}/ACTIVITY/{activityId}";
+
+            Toast?.Show("✅ Activity created in Sage X3!");
+
+            // 2️⃣ Upload all attachments
+            foreach (var att in Attachments)
+            {
+                if (!att.IsUploading) // skip if already uploading individually
+                {
+                    att.IsUploading = true;
+                    var attContent = await JS.InvokeAsync<AttachmentContent>("downloadAttachment", att.Id);
+                    await AttachmentService.UploadAttachmentAsync(ActivityId, att.Name, attContent.Content);
+                    att.IsUploading = false;
+                }
+            }
+
+            Toast?.Show("📎 All attachments uploaded!");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            Toast?.Show($"❌ Failed: {ex.Message}");
+        }
+    }
+
+    record AttachmentContent(string Content);
+
+    private class EmailDto
+    {
+        public List<EmailAttachmentDto> Attachments { get; set; } = new();
+    }
+
+    private class EmailAttachmentDto
+    {
+        public string Id { get; set; }
+        public string Name { get; set; }
+    }
+
+    private class AttachmentViewModel
+    {
+        public string Id { get; set; }
+        public string Name { get; set; }
+        public bool IsUploading { get; set; }
+    }
+}

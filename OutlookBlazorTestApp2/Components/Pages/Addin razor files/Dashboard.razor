@@ -1,5 +1,65 @@
-﻿<h3>Dashboard</h3>
+﻿@page "/home"
+@using System.Threading.Tasks
+using System.Collections.Generic;
+@using OutlookBlazorTestApp2.services
+@using OutlookBlazorTestApp2.Models
+@inject EmailService EmailService
+@inject CrmService Crm
+@inject NavigationManager Nav
+@inject RoleService RoleService
+
+<h3>CRM Dashboard</h3>
+
+@if (EmailDetails is not null)
+{
+    <div class="card p-3 mb-3">
+        <strong>Email:</strong> @EmailDetails.Subject <br />
+        <strong>From:</strong> @EmailDetails.From
+    </div>
+}
+
+<div class="row">
+    <div class="col-6">
+        <button class="btn btn-primary w-100" @onclick="@(() => Nav.NavigateTo("/contacts/add"))">Create Contact</button>
+    </div>
+    <div class="col-6">
+        <button class="btn btn-secondary w-100" @onclick="@(() => Nav.NavigateTo("/contacts/"))">
+            View Contacts
+        </button>
+    </div>
+</div>
+
+@if (IsManager)
+{
+    <div class="mt-3">
+        <button class="btn btn-warning w-100">Admin: Approve CRM Changes</button>
+    </div>
+}
+
+<h5 class="mt-4">Recently Linked Items</h5>
+<ul>
+    @foreach (var item in RecentItems)
+    {
+        <li>@item.Name (@item.Type)</li>
+    }
+</ul>
 
 @code {
+    private bool IsManager;
+    private EmailDetails EmailDetails;
 
+    public Dashboard(EmailDetails emailDetails)
+    {
+        EmailDetails = emailDetails;
+    }
+
+    private List<CrmRecord> RecentItems = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        IsManager = RoleService.IsManager();
+        EmailDetails = await EmailService.GetActiveEmail();
+        RecentItems = await Crm.GetRecentLinkedRecords();
+    }
 }
+

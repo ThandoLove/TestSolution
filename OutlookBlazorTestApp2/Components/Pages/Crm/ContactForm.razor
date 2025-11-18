@@ -1,5 +1,32 @@
-﻿<h3>ContactForm</h3>
+﻿@page "/contacts/add"
+@inject CrmService Crm
+@inject NavigationManager Nav
+
+<h3>Add Contact</h3>
+
+<EditForm Model="@Contact" OnValidSubmit="Save">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="mb-2">
+        <label>Name</label>
+        <InputText class="form-control" @bind-Value="Contact.Name" />
+    </div>
+
+    <div class="mb-2">
+        <label>Email</label>
+        <InputText class="form-control" @bind-Value="Contact.Email" />
+    </div>
+
+    <button class="btn btn-success">Save</button>
+</EditForm>
 
 @code {
+    ContactDto Contact = new();
 
+    async Task Save()
+    {
+        await Crm.CreateContact(Contact);
+        Nav.NavigateTo("/contacts");
+    }
 }

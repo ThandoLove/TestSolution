@@ -1,0 +1,20 @@
+﻿@page "/login"
+@inject NavigationManager Nav
+
+<h3>Sign in</h3>
+
+<p>
+    You will be redirected to Microsoft to sign in.
+</p>
+
+<button class="btn btn-primary" @onclick="SignIn">Sign in with Microsoft</button>
+
+@code {
+    private void SignIn()
+    {
+        // Redirect to our controller which issues an OIDC Challenge
+        var returnUrl = Nav.ToBaseRelativePath(Nav.Uri);
+        Nav.NavigateTo($"/Account/SignIn?returnUrl=/home", true);
+    }
+}
+

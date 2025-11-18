@@ -612,8 +612,22 @@ namespace OutlookBlazorTestApp2.services
                 });
             }
         }
+
+        // ✅ TEMPORARY DEMO METHOD for Home.razor recent items
+        public async Task<List<CrmRecord>> GetRecentLinkedRecords()
+        {
+            await Task.Delay(100); // simulate DB latency
+
+            return new List<CrmRecord>
+            {
+                new CrmRecord { Id = Guid.NewGuid(), Name = "John Doe", Type = "Contact" },
+                new CrmRecord { Id = Guid.NewGuid(), Name = "Acme Corp", Type = "Account" },
+                new CrmRecord { Id = Guid.NewGuid(), Name = "Invoice 12345", Type = "Order" }
+            };
+        }
+
     }
-   
+
 }
 
 

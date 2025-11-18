@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using OutlookBlazorTestApp2.Data.Models;
 using OutlookBlazorTestApp2.services;
-using OutlookTestBlazor2.Controllers;
+using OutlookBlazorTestApp2.Controllers;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 

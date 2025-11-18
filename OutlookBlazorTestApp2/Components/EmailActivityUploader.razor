@@ -1,0 +1,324 @@
+﻿@using OutlookBlazorTestApp2.Data.Models.Supporting
+@using OutlookBlazorTestApp2.Components
+@using OutlookBlazorTestApp2.Services
+@inject EmailService EmailService
+@inject SageX3Service SageX3
+@inject EmailAttachmentService AttachmentService
+@inject IJSRuntime Js
+@inject IConfiguration Config
+
+<div class="card p-3 position-relative">
+    <h5>Create Activity & Upload Attachments</h5>
+
+    @if (LoadingEmail)
+    {
+        <div>Loading email context...</div>
+    }
+    else if (EmailCtx == null)
+    {
+        <div class="alert alert-warning">No email loaded. Open message in Outlook and try again.</div>
+        <button class="btn btn-primary" @onclick="LoadEmail">Load Email</button>
+    }
+    else
+    {
+        <div><strong>Subject:</strong> @EmailCtx.Subject</div>
+        <div><strong>From:</strong> @EmailCtx.FromName (@EmailCtx.From)</div>
+
+        <hr/>
+        <h6>Attachments</h6>
+
+        @if (Attachments?.Any() != true)
+        {
+            <div class="text-muted">No attachments detected</div>
+        }
+        else
+        {
+            <ul class="list-group mb-2">
+                @foreach (var a in Attachments)
+                {
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>@a.Name</strong>
+                            <div class="small text-muted">@a.Size bytes</div>
+                        </div>
+                        <div>
+                            @if (a.IsUploaded)
+                            {
+                                <span class="badge bg-success me-2">Uploaded</span>
+                            }
+                            else if (a.InProgress)
+                            {
+                                <span class="me-2">@($"{a.Progress}%")</span>
+                                <div class="spinner-border spinner-border-sm" role="status"></div>
+                            }
+                            else if (a.HasError)
+                            {
+                                <button class="btn btn-sm btn-warning me-1" @onclick="() => RetryUpload(a)">Retry</button>
+                                <span class="badge bg-danger">Failed</span>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => UploadSingle(a)">Upload</button>
+                            }
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary" @onclick="CreateActivityAndUploadAll" disabled="@IsBusy">
+                @if (IsBusy) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                Create Activity + Upload All
+            </button>
+
+            <button class="btn btn-outline-secondary" @onclick="OpenInSage" disabled="@(!ActivityCreated)">
+                Open in Sage X3
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(StatusMessage))
+        {
+            <div class="mt-2">
+                <div class="alert @StatusCss">@StatusMessage</div>
+            </div>
+        }
+    }
+
+    @if (ShowOverlay)
+    {
+        <div class="overlay">
+            <div class="spinner-border" style="width:3rem;height:3rem"></div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool LoadingEmail = true;
+    private OutlookBlazorTestApp2.Data.Models.EmailContext? EmailCtx;
+    private List<AttachmentUi> Attachments = new();
+    private bool IsBusy = false;
+    private bool ActivityCreated = false;
+    private string CreatedActivityId = "";
+    private string StatusMessage = "";
+    private string StatusCss = "alert-info";
+    private bool ShowOverlay = false;
+
+    protected override async Task OnInitializedAsync() => await LoadEmail();
+
+    private async Task LoadEmail()
+    {
+        LoadingEmail = true;
+        EmailCtx = await EmailService.GetActiveEmailFromOutlookAsync();
+        LoadingEmail = false;
+
+        Attachments.Clear();
+        if (EmailCtx?.Attachments != null)
+        {
+            foreach (var a in EmailCtx.Attachments)
+            {
+                Attachments.Add(new AttachmentUi
+                {
+                    Id = a.Id,
+                    Name = a.Name,
+                    Size = a.Size,
+                });
+            }
+        }
+    }
+
+    private async Task CreateActivityAndUploadAll()
+    {
+        if (EmailCtx == null) return;
+        IsBusy = true;
+        ShowOverlay = true;
+        StatusMessage = "Creating activity...";
+        StateHasChanged();
+
+        // Build YActivityModel
+        var model = new YActivityModel
+        {
+            YSUBJECT = EmailCtx.Subject,
+            YHTMLBODY = EmailCtx.Body ?? "",
+            YTEXTBODY = StripHtml(EmailCtx.Body ?? ""),
+            BPCCT = await GuessContactCode(EmailCtx.From), // implement guessing
+            YSENTDATE = DateTime.UtcNow,
+            YDIR = "IN",
+            YOWNER = GetCurrentUserNameOrId(),
+            YMESSAGEID = Guid.NewGuid().ToString() // Ideally use Outlook message id if available
+        };
+
+        var createResp = await SageX3.CreateEmailActivityAsync(model);
+        if (!createResp.Success)
+        {
+            StatusMessage = $"Failed to create activity: {createResp.Raw}";
+            StatusCss = "alert-danger";
+            IsBusy = false;
+            ShowOverlay = false;
+            return;
+        }
+
+        CreatedActivityId = createResp.ActivityId;
+        ActivityCreated = true;
+        StatusMessage = "Activity created. Uploading attachments...";
+        StatusCss = "alert-success";
+        StateHasChanged();
+
+        // Upload attachments sequentially with progress
+        foreach (var att in Attachments)
+        {
+            if (att.IsUploaded) continue;
+            att.InProgress = true;
+            att.HasError = false;
+            StateHasChanged();
+
+            try
+            {
+                // download from Outlook
+                var attObj = await Js.InvokeAsync<object>("downloadAttachment", att.Id);
+                // attObj should contain { content: "base64..." } or an object per your officeInterop implementation.
+                var json = System.Text.Json.JsonSerializer.Serialize(attObj);
+                var doc = System.Text.Json.JsonDocument.Parse(json);
+                string base64 = "";
+                if (doc.RootElement.TryGetProperty("content", out var contentProp))
+                    base64 = contentProp.GetString() ?? "";
+                else
+                    base64 = doc.RootElement.GetProperty("value").GetProperty("contentBytes").GetString() ?? "";
+
+                // optionally update progress UI (we don't have chunked upload here)
+                var (success, sageId, raw) = await AttachmentService.UploadAttachmentAsync(Guid.Parse(CreatedActivityId), att.Name, base64);
+                if (success)
+                {
+                    att.IsUploaded = true;
+                    att.InProgress = false;
+                    att.Progress = 100;
+                    att.SageAttachmentId = sageId;
+                    StatusMessage = $"Attachment {att.Name} uploaded";
+                }
+                else
+                {
+                    att.InProgress = false;
+                    att.HasError = true;
+                    StatusMessage = $"Upload failed for {att.Name}: {raw}";
+                    StatusCss = "alert-warning";
+                }
+            }
+            catch (Exception ex)
+            {
+                att.InProgress = false;
+                att.HasError = true;
+                StatusMessage = $"Upload error: {ex.Message}";
+                StatusCss = "alert-danger";
+            }
+
+            StateHasChanged();
+        }
+
+        IsBusy = false;
+        ShowOverlay = false;
+        if (Attachments.All(a => a.IsUploaded))
+        {
+            StatusMessage = "All attachments uploaded successfully";
+            StatusCss = "alert-success";
+        }
+        else
+        {
+            StatusMessage = "Some attachments failed to upload - retry to complete";
+            StatusCss = "alert-warning";
+        }
+
+        // display toast via JS
+        await Js.InvokeVoidAsync("alert", StatusMessage);
+    }
+
+    private async Task UploadSingle(AttachmentUi a)
+    {
+        if (string.IsNullOrWhiteSpace(CreatedActivityId))
+        {
+            await Js.InvokeVoidAsync("alert", "Create Activity first");
+            return;
+        }
+
+        a.InProgress = true;
+        StateHasChanged();
+
+        try
+        {
+            var attObj = await Js.InvokeAsync<object>("downloadAttachment", a.Id);
+            var json = System.Text.Json.JsonSerializer.Serialize(attObj);
+            var doc = System.Text.Json.JsonDocument.Parse(json);
+            string base64 = "";
+            if (doc.RootElement.TryGetProperty("content", out var contentProp))
+                base64 = contentProp.GetString() ?? "";
+            else
+                base64 = doc.RootElement.GetProperty("value").GetProperty("contentBytes").GetString() ?? "";
+
+            var (success, sageId, raw) = await AttachmentService.UploadAttachmentAsync(Guid.Parse(CreatedActivityId), a.Name, base64);
+            if (success)
+            {
+                a.IsUploaded = true;
+                a.Progress = 100;
+                a.SageAttachmentId = sageId;
+            }
+            else
+            {
+                a.HasError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            a.HasError = true;
+            StatusMessage = ex.Message;
+        }
+        finally
+        {
+            a.InProgress = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RetryUpload(AttachmentUi a) => await UploadSingle(a);
+
+    private void OpenInSage()
+    {
+        if (string.IsNullOrEmpty(CreatedActivityId)) return;
+        var dl = SageX3.BuildDeepLink(CreatedActivityId);
+        if (!string.IsNullOrWhiteSpace(dl))
+        {
+            Js.InvokeVoidAsync("open", dl);
+        }
+    }
+
+    // Helpers
+    private string StripHtml(string input)
+    {
+        if (string.IsNullOrEmpty(input)) return input;
+        return System.Text.RegularExpressions.Regex.Replace(input, "<.*?>", string.Empty);
+    }
+
+    // crude guess - replace with your matching logic or call AutoLink service
+    private async Task<string> GuessContactCode(string fromEmail)
+    {
+        // call your crm service/find logic here; fallback blank
+        await Task.CompletedTask;
+        return ""; // leave blank; Sage side can accept empty for unknown contact
+    }
+
+    private string GetCurrentUserNameOrId()
+    {
+        // In production, map to actual Sage rep code from Claims
+        return Environment.UserName ?? "system";
+    }
+
+    private class AttachmentUi
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public int Size { get; set; } = 0;
+        public bool InProgress { get; set; } = false;
+        public int Progress { get; set; } = 0;
+        public bool IsUploaded { get; set; } = false;
+        public bool HasError { get; set; } = false;
+        public string SageAttachmentId { get; set; } = "";
+    }
+}

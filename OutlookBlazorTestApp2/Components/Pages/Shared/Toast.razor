@@ -1,0 +1,31 @@
+﻿<div class="toast-container position-fixed top-0 end-0 p-3">
+    @if (Show)
+    {
+        <div class="toast align-items-center text-white bg-success show">
+            <div class="d-flex">
+                <div class="toast-body">@Message</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                        @onclick="Hide"></button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    public bool Show { get; set; }
+    public string Message { get; set; } = "";
+
+    public void Display(string msg)
+    {
+        Message = msg;
+        Show = true;
+        StateHasChanged();
+        _ = Task.Delay(3000).ContinueWith(_ =>
+        {
+            Hide();
+            InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private void Hide() => Show = false;
+}

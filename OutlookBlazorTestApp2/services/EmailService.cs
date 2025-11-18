@@ -8,6 +8,15 @@ public class EmailService
         {
             "customer@example.com", "info@example.com"
         });
+        public async Task<EmailDetails> GetActiveEmail()
+    {
+        await Task.Delay(100);
+        return new EmailDetails
+        {
+            Subject = "Welcome to Sage X3 Integration",
+            From = "crm@company.com"
+        };
     }
+}
 }
 
